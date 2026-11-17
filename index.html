@@ -1,0 +1,568 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Soak Before Sync · APM Lab</title>
+<meta name="description" content="How long should a shared agent skill update soak before it reaches every recipient? A composition Monte Carlo (mixtures, convolutions, Box-Muller) picks the window. APM Lab by Shriya Shekatkar.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@500;700&family=EB+Garamond:ital,wght@0,500;0,700;1,500&family=Gochi+Hand&family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --magenta:#EC3FB4; --ink:#0d0a0c;
+  --paper:#ffffff; --marker:#C8161B; --marker-soft:#fbe9e9;
+  --bug:#D4532E; --bug-dark:#3a2e2a; --serif-brown:#5e4031; --bug-pink:#B8456A; --cream:#fbf7f2;
+  --pond:#24312a; --pond-2:#33443a; --lotus:#F3B5C7; --lotus-white:#FBEFF3; --rain:#9fb3a6;
+  --body:#1d1a1b; --muted:#5b5357; --bg:#fbf7f2;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--body);font:16px/1.6 Inter,system-ui,sans-serif;overflow-x:hidden}
+a{color:inherit}
+.wrap{max-width:1120px;margin:0 auto;padding:0 20px}
+.grain{position:relative;isolation:isolate}
+.grain::after{content:"";position:absolute;inset:0;pointer-events:none;z-index:1;opacity:.1;mix-blend-mode:multiply;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .9 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+.grain>*{position:relative;z-index:2}
+
+/* ---------- HERO: magenta poster, blurry justified black sans ---------- */
+.hero{background:var(--magenta);color:var(--ink);padding:56px 0 64px;overflow:hidden}
+.hero .kicker{font:700 14px/1.2 "Archivo Narrow",sans-serif;letter-spacing:.18em;text-transform:uppercase;display:flex;flex-wrap:wrap;gap:8px 18px;margin-bottom:26px}
+.hero h1{font:700 clamp(46px,10.5vw,132px)/.98 "Archivo Narrow",Arial,sans-serif;margin:0;text-align:justify;text-align-last:justify;
+  text-shadow:0 0 6px rgba(13,10,12,.55),0 0 18px rgba(13,10,12,.25);letter-spacing:-.01em;animation:breathe 6s ease-in-out infinite}
+.hero h1 span{display:block}
+@keyframes breathe{0%,100%{text-shadow:0 0 6px rgba(13,10,12,.55),0 0 18px rgba(13,10,12,.25)}50%{text-shadow:0 0 10px rgba(13,10,12,.7),0 0 28px rgba(13,10,12,.35)}}
+.hero .sub{display:grid;grid-template-columns:1.3fr 1fr;gap:28px;margin-top:34px;align-items:end}
+.hero .launch{font:600 17px/1.5 Inter,sans-serif;max-width:56ch}
+.hero .launch a{font-weight:800;text-decoration-thickness:2px;text-underline-offset:3px}
+.hero .byline{font:700 15px/1.4 "Archivo Narrow",sans-serif;letter-spacing:.06em;text-transform:uppercase;text-align:right}
+.hero .byline b{display:block;font-size:30px;letter-spacing:0;text-transform:none}
+.hero .tile{display:inline-block;border:2px solid var(--ink);padding:4px 10px;margin-top:10px}
+
+/* ---------- section scaffolding ---------- */
+section{padding:64px 0}
+.eyebrow{font:700 13px/1 "Archivo Narrow",sans-serif;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
+h2{font:700 clamp(32px,5vw,52px)/1.05 "Archivo Narrow",sans-serif;margin:0 0 24px}
+.lede{max-width:70ch;color:#3a3336}
+
+/* ---------- CARDS: white paper, red marker handwriting ---------- */
+.board{columns:3 300px;column-gap:18px}
+.card{break-inside:avoid;background:var(--paper);border-radius:16px;padding:22px 22px 18px;margin:0 0 18px;box-shadow:0 1px 0 rgba(0,0,0,.04),0 8px 22px rgba(60,20,20,.08);border:1px solid #efe7e7}
+.card h3{font:400 30px/1.05 "Gochi Hand",cursive;color:var(--marker);margin:0 0 10px}
+.card p,.card li{font-size:15px;color:#2b2527}
+.card ul{padding-left:18px;margin:6px 0}
+.card .sig{font:400 15px/1 "Gochi Hand",cursive;color:var(--marker);text-align:right;margin-top:10px}
+.card .pincap{font:600 12px/1.3 Inter,sans-serif;color:var(--muted);margin-top:12px;border-top:1px dashed #e7d7d7;padding-top:8px}
+.gtable{width:100%;border-collapse:collapse;font-size:14px}
+.gtable td{padding:6px 0;border-bottom:1px dashed #ecdcdc;vertical-align:top}
+.gtable td:last-child{text-align:right;font-weight:700;color:var(--marker);white-space:nowrap;padding-left:10px}
+.btn{font:400 22px/1 "Gochi Hand",cursive;color:var(--marker);background:#fff;border:2.5px solid var(--marker);border-radius:255px 15px 225px 15px/15px 225px 15px 255px;padding:10px 18px;cursor:pointer;transition:transform .15s}
+.btn:hover{transform:rotate(-1.5deg) scale(1.03)}
+.btn:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #ffd34d;outline-offset:2px}
+.btn.solid{background:var(--marker);color:#fff}
+
+/* ---------- SIMULATION ROOM: rainy lotus pond ---------- */
+.pondroom{background:linear-gradient(180deg,#1f2a24 0%,var(--pond) 40%,#2a3a31 100%);color:#f2ece6}
+.pondroom .eyebrow{color:#c5d3ca}
+.pondroom h2{color:#fbefF3}
+.pondroom .lede{color:#dfe8e2}
+.simgrid{display:grid;grid-template-columns:330px 1fr;gap:22px;align-items:start}
+.controls{background:var(--paper);color:#2b2527;border-radius:16px;padding:18px;border:1px solid #efe7e7}
+.controls h3{font:400 26px/1 "Gochi Hand",cursive;color:var(--marker);margin:0 0 12px}
+.ctl{margin:0 0 14px}
+.ctl label{display:flex;justify-content:space-between;font:600 13.5px/1.3 Inter,sans-serif;gap:10px}
+.ctl label output{font:600 13px "JetBrains Mono",monospace;color:var(--marker)}
+.ctl small{display:block;color:var(--muted);font-size:12px;line-height:1.4}
+input[type=range]{width:100%;accent-color:var(--marker);height:28px}
+.toggle{display:flex;gap:8px;align-items:center;font:600 13.5px Inter,sans-serif}
+.toggle input{width:18px;height:18px;accent-color:var(--marker)}
+.btnrow{display:flex;gap:10px;flex-wrap:wrap;margin-top:6px}
+.canvasbox{background:#1b2520;border-radius:18px;overflow:hidden;border:1px solid #3c4f44;position:relative}
+#pond{display:block;width:100%;height:340px}
+.legend{display:flex;flex-wrap:wrap;gap:8px 16px;padding:10px 14px;font-size:13px;color:#e3ebe6;background:#1b2520;border-top:1px solid #33443a}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:50%;margin-right:6px;vertical-align:-1px}
+#sweep{display:block;width:100%;height:240px;background:#1b2520}
+.chartcap{font-size:13px;color:#cfdad3;padding:8px 14px 12px;background:#1b2520}
+
+/* ---------- KPI BADGES: ladybug shells, serif type ---------- */
+.badges{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-top:22px}
+.badge{background:var(--cream);color:var(--serif-brown);border-radius:18px;padding:12px 10px 14px;text-align:center;border:1px solid #eadfd3}
+.badge svg{width:100%;max-width:120px;height:auto;display:block;margin:0 auto}
+.badge .val{font:700 28px/1 "EB Garamond",serif;color:var(--serif-brown);margin-top:2px}
+.badge .lab{font:500 15px/1.2 "EB Garamond",serif;color:var(--bug-pink);margin-top:4px}
+.badge .gr{font:600 11.5px/1.3 Inter,sans-serif;color:#5b4b43;margin-top:6px}
+.badge.ok .gr::before{content:"✓ ";color:#2f6b3a}
+.badge.bad .gr::before{content:"✕ ";color:var(--marker)}
+.badge.bad{box-shadow:inset 0 0 0 2px var(--marker)}
+.walk{animation:walk 5s ease-in-out infinite;transform-origin:50% 60%}
+@keyframes walk{0%,100%{transform:rotate(-2deg)}50%{transform:rotate(2deg)}}
+
+/* ---------- MEMO ---------- */
+.memo{background:var(--paper);border-radius:18px;padding:28px;border:1px solid #efe7e7;box-shadow:0 10px 30px rgba(60,20,20,.07);max-width:880px}
+.memo h3{font:400 28px/1.1 "Gochi Hand",cursive;color:var(--marker);margin:18px 0 6px}
+.memo h3:first-child{margin-top:0}
+.memo .vp{background:var(--magenta);color:var(--ink);font:700 22px/1.25 "Archivo Narrow",sans-serif;padding:16px 18px;border-radius:12px;margin-top:18px}
+.memo .stamp{display:inline-block;font:700 13px/1 "Archivo Narrow",sans-serif;letter-spacing:.14em;text-transform:uppercase;border:2px solid var(--marker);color:var(--marker);padding:6px 10px;border-radius:6px;transform:rotate(-2deg)}
+
+/* ---------- MATH + CODE ---------- */
+.math{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.formula{font:600 14px/1.5 "JetBrains Mono",monospace;background:var(--marker-soft);color:#5a0b0e;padding:10px 12px;border-radius:10px;margin:10px 0;overflow-x:auto}
+pre{background:#1b2520;color:#e9f0eb;border-radius:14px;padding:16px;overflow-x:auto;font:13px/1.55 "JetBrains Mono",monospace;margin:0}
+pre .c{color:#a9bdb1}
+pre .k{color:#F3B5C7}
+.codegrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:18px}
+.codegrid>*,.simgrid>*,.math>*{min-width:0}
+.codegrid h3{font:400 26px/1 "Gochi Hand",cursive;color:var(--marker);margin:0 0 10px}
+
+footer{background:var(--ink);color:#e9e2e6;padding:34px 0 40px;font-size:14px}
+footer a{color:#ffc3e6}
+footer .credits{font-size:11px;color:#b9adb3;margin-top:14px;line-height:1.6}
+footer .credits a{color:#d9c9d2}
+
+@media (max-width:900px){
+  .simgrid{grid-template-columns:1fr}
+  .badges{grid-template-columns:repeat(2,1fr)}
+  .badges .badge:last-child{grid-column:1/-1}
+  .math,.codegrid{grid-template-columns:minmax(0,1fr)}
+  .hero .sub{grid-template-columns:1fr}
+  .hero .byline{text-align:left}
+}
+@media (max-width:420px){
+  .wrap{padding:0 16px}
+  .hero h1{text-align:left;text-align-last:left}
+  #pond{height:280px}
+  .memo{padding:20px}
+}
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
+}
+</style>
+</head>
+<body>
+
+<!-- ================= HERO ================= -->
+<header class="hero grain">
+  <div class="wrap">
+    <div class="kicker"><span>APM Lab</span><span>Decision prototype</span><span>Agent skill sharing</span></div>
+    <h1 aria-label="i ship upgrades my customers can trust on day one">
+      <span>i ship upgrades</span>
+      <span>my customers</span>
+      <span>can trust on</span>
+      <span>day one</span>
+    </h1>
+    <div class="sub">
+      <p class="launch">Mirrors: <a href="https://docs.databricks.com/aws/en/release-notes/product/2026/november" target="_blank" rel="noopener">Unity Catalog agent skills can now be shared through OpenSharing and Databricks Marketplace (Beta, Nov 16, 2026)</a>. Recipients get read-only skills that update asynchronously. So when a provider pushes a new version, how long should it soak before it reaches every recipient's agents?</p>
+      <div class="byline"><b>Shriya Shekatkar</b>UCLA · Stats 102C Monte Carlo Methods<br><span class="tile">Ch5 · Composition</span></div>
+    </div>
+  </div>
+</header>
+
+<main>
+<!-- ================= THE DECISION ================= -->
+<section>
+  <div class="wrap">
+    <p class="eyebrow">01 · The decision</p>
+    <h2>Live sync, or soak first?</h2>
+    <p class="lede">Shared skills are instructions that other companies' agents read and act on. A provider's bad edit doesn't stay in one workspace: it reaches every recipient's agents. I'm playing the PM who owns skill distribution, and I have one default to set.</p>
+    <div class="board" style="margin-top:26px">
+      <article class="card">
+        <h3>the customer problem</h3>
+        <p>A data team installs a Marketplace skill (say, "reconcile monthly revenue") and builds an agent on it. The provider ships a fix on Tuesday, and on Wednesday the agent starts filing wrong numbers. Recipients can't edit the skill, because it's read-only, so they're stuck until the provider notices.</p>
+        <p class="sig">— "I didn't change anything!"</p>
+      </article>
+      <article class="card">
+        <h3>the proposed change</h3>
+        <p>Add a <b>soak window</b>: a new skill version goes live right away for an opt-in <b>canary ring</b> and for the provider's own evals. It reaches everyone else after <i>S</i> hours unless a break is detected first. Security fixes can <b>skip the line</b>.</p>
+        <p class="pincap">Default to set: <i>S</i> hours · canary ring size · security fast-lane on/off</p>
+      </article>
+      <article class="card">
+        <h3>success metric</h3>
+        <p><b>Broken agent-hours per recipient per quarter</b> drops by at least <b>50%</b> compared with live sync. A broken agent-hour is one hour in which a recipient's agent runs on a version that later gets rolled back.</p>
+      </article>
+      <article class="card">
+        <h3>guardrails</h3>
+        <table class="gtable">
+          <tr><td>Broken agent-hours / recipient / quarter</td><td>≤ 1.0 h</td></tr>
+          <tr><td>Recipients hit by ≥1 bad version / quarter</td><td>≤ 8%</td></tr>
+          <tr><td>Improvement delay (soak length)</td><td>≤ 72 h</td></tr>
+          <tr><td>Security-fix delay, P90</td><td>≤ 24 h</td></tr>
+        </table>
+      </article>
+      <article class="card">
+        <h3>stakeholders</h3>
+        <ul>
+          <li><b>Skill providers</b>: want fixes out fast and few angry tickets</li>
+          <li><b>Recipient platform teams</b>: want agents that don't change underneath them</li>
+          <li><b>Marketplace &amp; sharing eng</b>: own the version pipeline</li>
+          <li><b>Security</b>: need patches to land quickly</li>
+          <li><b>Field / support</b>: absorb the "my agent broke" escalations</li>
+        </ul>
+      </article>
+      <article class="card">
+        <h3>why it's hard</h3>
+        <p>Every hour of soak catches more bad versions, but it also delays every good one. Meanwhile the canary ring takes the hits for everyone else. Providers vary too: a careful team and a move-fast team behave nothing alike. Averages hide all of this, so I simulate it.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ================= SIMULATION ROOM ================= -->
+<section class="pondroom grain" id="sim">
+  <div class="wrap">
+    <p class="eyebrow">02 · Simulation room</p>
+    <h2>The rain pond</h2>
+    <p class="lede">Each drop is one simulated skill update landing on a recipient pond. Most ripple out harmlessly. Bad versions that the soak caught close up into lotus buds. Bad versions that escaped leave red rings. Each run simulates thousands of provider-quarters from a seed, so every run is reproducible.</p>
+
+    <div class="simgrid" style="margin-top:22px">
+      <form class="controls" id="ctl" onsubmit="return false">
+        <h3>knobs</h3>
+        <div class="ctl"><label for="S">Soak window S <output id="So">36 h</output></label>
+          <input type="range" id="S" min="0" max="168" step="6" value="36"><small>How long a new version waits before reaching every recipient</small></div>
+        <div class="ctl"><label for="ring">Canary ring <output id="ringo">10%</output></label>
+          <input type="range" id="ring" min="2" max="40" step="1" value="10"><small>Recipients who opted into live updates (they see breaks first)</small></div>
+        <div class="ctl"><label for="fast">Move-fast providers <output id="fasto">25%</output></label>
+          <input type="range" id="fast" min="0" max="70" step="5" value="25"><small>Mixture weight: these ship weekly-ish, and 15% of their versions break (vs 4%)</small></div>
+        <div class="ctl"><label for="q">Provider eval coverage <output id="qo">50%</output></label>
+          <input type="range" id="q" min="0" max="90" step="5" value="50"><small>Chance the provider's own tests catch a bad version (about 6 h on average)</small></div>
+        <div class="ctl"><label for="m">Hours per user report <output id="mo">2.0 h</output></label>
+          <input type="range" id="m" min="0.5" max="8" step="0.5" value="2"><small>At full traffic; it takes 2 reports to confirm a break</small></div>
+        <div class="ctl toggle"><input type="checkbox" id="exp" checked><label for="exp" style="display:inline">Security fixes skip the soak</label></div>
+        <div class="ctl"><label for="n">Provider-quarters simulated <output id="no">3000</output></label>
+          <input type="range" id="n" min="500" max="8000" step="500" value="3000"></div>
+        <div class="ctl"><label for="seed">Seed <output id="seedo">2026</output></label>
+          <input type="range" id="seed" min="1" max="9999" step="1" value="2026"></div>
+        <div class="btnrow"><button class="btn solid" id="run" type="button">run it</button><button class="btn" id="reseed" type="button">new seed</button></div>
+      </form>
+
+      <div>
+        <div class="canvasbox">
+          <canvas id="pond" aria-label="Animated pond: each ripple is a simulated skill update" role="img"></canvas>
+          <div class="legend">
+            <span><i style="background:#cfe0d6"></i>healthy update</span>
+            <span><i style="background:#F3B5C7"></i>bad version caught in soak (lotus bud)</span>
+            <span><i style="background:#ff6f6f"></i>bad version escaped</span>
+            <span><i style="background:#ffd34d"></i>security fast-lane</span>
+          </div>
+        </div>
+        <div class="canvasbox" style="margin-top:14px">
+          <canvas id="sweep" aria-label="Chart of broken agent-hours and hit rate against soak window" role="img"></canvas>
+          <p class="chartcap" id="sweepcap">Sweep across soak windows (same seed for each, so the comparison is apples to apples).</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="badges" id="badges" aria-live="polite"></div>
+  </div>
+</section>
+
+<!-- ================= MEMO ================= -->
+<section>
+  <div class="wrap">
+    <p class="eyebrow">03 · Director memo (rewrites itself from the run)</p>
+    <h2>The memo</h2>
+    <div class="memo" id="memo"></div>
+  </div>
+</section>
+
+<!-- ================= MATH ================= -->
+<section style="padding-top:20px">
+  <div class="wrap">
+    <p class="eyebrow">04 · The math, from my Monte Carlo course</p>
+    <h2>Composition: build hard randomness from easy pieces</h2>
+    <p class="lede">Chapter 5 of Stats 102C is about building a complicated random variable out of simple ones you already know how to sample. This model uses three of those moves.</p>
+    <div class="math" style="margin-top:22px">
+      <article class="card">
+        <h3>mixtures</h3>
+        <p>Providers aren't one population. To draw a provider, first flip a weighted coin to pick its component (careful or move-fast), then sample from that component's own ship and break rates. The overall distribution is the weighted blend, and its tails come from the minority component.</p>
+        <div class="formula">f(x) = w·f_fast(x) + (1−w)·f_careful(x)</div>
+        <p>Product read: if 25% of providers cause most breaks, a per-provider policy beats a global one.</p>
+      </article>
+      <article class="card">
+        <h3>convolutions</h3>
+        <p>A sum of independent pieces has a distribution that is their convolution. Adding up 13 weekly "did they ship?" coin flips gives a Binomial count of updates. Adding up the waits between user reports, then the fix time, gives a Gamma-shaped time to rollback.</p>
+        <div class="formula">T = E₁ + E₂ + E_fix,  Eᵢ ~ Exp(mean)</div>
+        <p>Product read: needing more reports to confirm a break pushes the whole exposure curve to the right.</p>
+      </article>
+      <article class="card">
+        <h3>Box-Muller</h3>
+        <p>Two uniforms become two independent normals: a radius √(−2 ln U₁) and an angle 2πU₂. I use this to draw each good update's quality lift, which tells me how much value a long soak holds back from customers.</p>
+        <div class="formula">Z = √(−2 ln U₁) · cos(2π U₂)</div>
+        <p>Product read: soak isn't free. Every hour delays real improvements for everyone.</p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ================= REAL DATA ================= -->
+<section style="padding-top:20px">
+  <div class="wrap">
+    <p class="eyebrow">05 · How I'd run it on real data</p>
+    <h2>Swap the priors for telemetry</h2>
+    <p class="lede">The simulation's inputs (ship rate, break rate by provider type, report rate, time to fix) should all come from logs. Table names below are illustrative.</p>
+    <div class="codegrid" style="margin-top:22px">
+      <div>
+        <h3>SQL: fit the inputs</h3>
+<pre><span class="c">-- break rate and time-to-rollback by provider cohort</span>
+<span class="k">WITH</span> versions <span class="k">AS</span> (
+  <span class="k">SELECT</span> v.provider_id, v.skill_id, v.version_id,
+         v.published_at, r.rolled_back_at,
+         p.cohort  <span class="c">-- 'careful' | 'move_fast' from ship cadence</span>
+  <span class="k">FROM</span> sharing.skills.version_events v
+  <span class="k">LEFT JOIN</span> sharing.skills.rollbacks r <span class="k">USING</span> (version_id)
+  <span class="k">JOIN</span> sharing.skills.provider_cohorts p <span class="k">USING</span> (provider_id)
+  <span class="k">WHERE</span> v.published_at &gt;= current_date() - <span class="k">INTERVAL</span> 180 <span class="k">DAYS</span>
+)
+<span class="k">SELECT</span> cohort,
+  count(*)                                  <span class="k">AS</span> versions,
+  avg(<span class="k">CAST</span>(rolled_back_at <span class="k">IS NOT NULL AS</span> INT)) <span class="k">AS</span> break_rate,
+  percentile_approx(
+    timestampdiff(MINUTE, published_at, rolled_back_at)/60.0, 0.5
+  )                                         <span class="k">AS</span> p50_hours_to_rollback
+<span class="k">FROM</span> versions
+<span class="k">GROUP BY</span> cohort;</pre>
+      </div>
+      <div>
+        <h3>Python: sweep the soak</h3>
+<pre><span class="k">import</span> numpy <span class="k">as</span> np
+rng = np.random.default_rng(<span class="k">2026</span>)
+inputs = spark.table(<span class="c">"sharing.skills.sim_inputs"</span>).toPandas()
+
+<span class="k">def</span> broken_hours(S, n=20_000, ring=0.10):
+    fast = rng.random(n) &lt; inputs.w_fast[0]          <span class="c"># mixture</span>
+    p_break = np.where(fast, inputs.p_fast[0], inputs.p_careful[0])
+    bad = rng.random(n) &lt; p_break
+    t_soak = rng.exponential(inputs.m[0]/ring, (n, 2)).sum(1)  <span class="c"># convolution</span>
+    caught = bad &amp; (t_soak &lt; S)
+    t_live = S + rng.exponential(inputs.m[0], (n, 2)).sum(1)
+    fix = rng.exponential(inputs.fix_mean[0], n)
+    exposed = np.where(bad &amp; ~caught, t_live + fix - S, 0)
+    return exposed.mean()
+
+grid = [0, 12, 24, 48, 72, 96]
+print({S: round(broken_hours(S), 2) <span class="k">for</span> S <span class="k">in</span> grid})</pre>
+      </div>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <p><b>Unofficial concept prototype by Shriya Shekatkar. All data is simulated. Not affiliated with any company.</b></p>
+    <p>Part of <a href="https://shriyashekatkar25-byte.github.io/apm-lab/">APM Lab, the gallery</a> of product-decision prototypes built with Monte Carlo methods.</p>
+    <p class="credits">Design inspired by:
+      <a href="https://www.pinterest.com/pin/1005991635536644887/" target="_blank" rel="noopener">"gifts from God" by Angel</a> ·
+      <a href="https://www.pinterest.com/pin/1085930528938961340/" target="_blank" rel="noopener">red marker quote card (Case Kenny), pinned by April</a> ·
+      <a href="https://www.pinterest.com/pin/594404850862077075/" target="_blank" rel="noopener">"Bug me anytime / Little ladybug" by Elly 4</a> ·
+      <a href="https://www.pinterest.com/pin/811492426651242659/" target="_blank" rel="noopener">"🪷" lotus pond by уσℓι٭</a>. All visuals redrawn in CSS, SVG and canvas.</p>
+  </div>
+</footer>
+
+<script>
+(()=>{
+"use strict";
+const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const $ = id => document.getElementById(id);
+
+/* ---------- seeded RNG ---------- */
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+
+/* ---------- the model (Ch5 composition) ---------- */
+const A=0.35, K=2, FIX=6, EVAL_M=6, WEEKS=13, SEC_SHARE=0.12;
+function simulate(p,S,n,seed,keep){
+  const R=mulberry32(seed); const U=()=>{const u=R();return u<1e-12?1e-12:u};
+  let spare=null;
+  const norm=()=>{ if(spare!==null){const s=spare;spare=null;return s}
+    const r=Math.sqrt(-2*Math.log(U())), th=2*Math.PI*R(); spare=r*Math.sin(th); return r*Math.cos(th); }; // Box-Muller
+  const expo=m=>-m*Math.log(U()); // inverse CDF exponential
+  const hours=[],hits=[],sec=[],samples=[]; let breaks=0,caught=0,updates=0,lost=0;
+  for(let i=0;i<n;i++){
+    const fast=R()<p.fast;                               // mixture: pick component
+    const pShip=fast?0.8:0.45, pBreak=fast?0.15:0.04;
+    let h=0,noHit=1;
+    for(let w=0;w<WEEKS;w++){                             // convolution of Bernoullis -> Binomial #updates
+      if(R()>=pShip) continue; updates++;
+      const isSec=R()<SEC_SHARE; const soak=(isSec&&p.expedite)?0:S;
+      const lift=1.2+1.0*norm();
+      if(isSec) sec.push(soak+expo(4));
+      lost+=Math.max(lift,0)*soak/24;
+      const br=R()<pBreak; const rec={b:br,c:false,x:0,s:isSec&&p.expedite};
+      if(br){ breaks++;
+        const evalT=R()<p.q?expo(EVAL_M):Infinity;        // mixture: eval catches or not
+        let t=0;
+        for(let j=0;j<K;j++){                              // convolution of exponential report waits
+          const mean=t<soak? p.m/p.ring : p.m; const e=expo(mean);
+          if(t<soak && t+e>soak){ t=soak+expo(p.m); } else t+=e;
+        }
+        const det=Math.min(evalT,t), end=det+expo(FIX);
+        const r=soak>0?p.ring:0;
+        const ringX=end;
+        const mainX = det<soak ? 0 : end-soak;
+        if(soak>0 && det<soak){caught++; rec.c=true;}
+        const x=r*ringX+(1-r)*mainX; h+=A*x; rec.x=x;
+        noHit*=1-A*(r*(ringX>0?1:0)+(1-r)*(mainX>0?1:0));
+      }
+      if(keep && samples.length<keep) samples.push(rec);
+    }
+    hours.push(h); hits.push(1-noHit);
+  }
+  const mean=a=>a.reduce((s,x)=>s+x,0)/Math.max(a.length,1);
+  const q=(a,pp)=>{if(!a.length)return 0;const b=a.slice().sort((x,y)=>x-y);return b[Math.min(b.length-1,Math.floor(pp*b.length))]};
+  return {S,hours:mean(hours),p90h:q(hours,.9),hit:mean(hits),sec90:q(sec,.9),breaks,caught,updates,lost:lost/n,samples};
+}
+
+const G={hours:1.0,hit:0.08,soak:72,sec:24};
+const GRID=[0,6,12,24,36,48,60,72,96,120,168];
+function params(){return{S:+$('S').value,ring:+$('ring').value/100,fast:+$('fast').value/100,q:+$('q').value/100,m:+$('m').value,expedite:$('exp').checked,n:+$('n').value,seed:+$('seed').value}}
+function syncOut(){const p=params();$('So').textContent=p.S+' h';$('ringo').textContent=Math.round(p.ring*100)+'%';$('fasto').textContent=Math.round(p.fast*100)+'%';$('qo').textContent=Math.round(p.q*100)+'%';$('mo').textContent=p.m.toFixed(1)+' h';$('no').textContent=p.n;$('seedo').textContent=p.seed}
+const passes=r=>r.hours<=G.hours&&r.hit<=G.hit&&r.S<=G.soak&&r.sec90<=G.sec;
+
+/* ---------- ladybug badge SVG ---------- */
+function bug(spots,id){
+  const pos=[[44,52],[76,52],[36,74],[84,74],[50,92],[70,92],[60,64],[60,104]];
+  let s=''; for(let i=0;i<Math.min(spots,8);i++){const[x,y]=pos[i];s+=`<path d="M${x} ${y+5} l-6 -6 a3.6 3.6 0 0 1 6 -4 a3.6 3.6 0 0 1 6 4 z" fill="#3a2e2a"/>`}
+  return `<svg viewBox="0 0 120 128" aria-hidden="true" class="walk">
+  <defs><radialGradient id="sh${id}" cx="40%" cy="35%" r="70%"><stop offset="0" stop-color="#f08a5d"/><stop offset=".55" stop-color="#D4532E"/><stop offset="1" stop-color="#9c3218"/></radialGradient></defs>
+  <g stroke="#3a2e2a" stroke-width="2.4" fill="none" stroke-linecap="round"><path d="M34 50 l-14 -8 l-6 2"/><path d="M86 50 l14 -8 l6 2"/><path d="M28 78 l-16 2 l-4 6"/><path d="M92 78 l16 2 l4 6"/><path d="M36 102 l-12 10 l-2 7"/><path d="M84 102 l12 10 l2 7"/><path d="M52 18 l-6 -10"/><path d="M68 18 l6 -10"/></g>
+  <path d="M42 34 q18 -22 36 0 z" fill="#3a2e2a"/><path d="M47 30 q4 -6 9 -3 l-2 5z M73 30 q-4 -6 -9 -3 l2 5z" fill="#f2e7c4"/>
+  <ellipse cx="60" cy="76" rx="34" ry="44" fill="url(#sh${id})"/>
+  <path d="M60 34 V120" stroke="#5a2414" stroke-width="1.6"/>
+  <ellipse cx="46" cy="56" rx="7" ry="11" fill="#fff" opacity=".22"/>${s}</svg>`;
+}
+function renderBadges(r,base){
+  const cut=base.hours>0?1-r.hours/base.hours:0;
+  const items=[
+    {v:r.hours.toFixed(2)+' h',l:'broken agent-hours',g:'guardrail ≤ 1.0 h · P90 '+r.p90h.toFixed(1)+' h',ok:r.hours<=G.hours,sp:Math.round(r.hours*3)},
+    {v:(100*r.hit).toFixed(1)+'%',l:'recipients hit / qtr',g:'guardrail ≤ 8%',ok:r.hit<=G.hit,sp:Math.round(r.hit*50)},
+    {v:Math.round(100*cut)+'%',l:'exposure cut vs live',g:'success bar ≥ 50%',ok:cut>=0.5,sp:Math.max(0,8-Math.round(cut*8))},
+    {v:r.sec90.toFixed(0)+' h',l:'security fix P90',g:'guardrail ≤ 24 h',ok:r.sec90<=G.sec,sp:Math.round(r.sec90/12)},
+    {v:r.S+' h',l:'improvement delay',g:'guardrail ≤ 72 h · '+r.lost.toFixed(1)+' lift-pt-days held',ok:r.S<=G.soak,sp:Math.round(r.S/24)}
+  ];
+  $('badges').innerHTML=items.map((b,i)=>`<div class="badge ${b.ok?'ok':'bad'}">${bug(b.sp,i)}<div class="val">${b.v}</div><div class="lab">${b.l}</div><div class="gr">${b.g}</div></div>`).join('');
+}
+
+/* ---------- pond canvas ---------- */
+const pond=$('pond'), pctx=pond.getContext('2d');
+let drops=[],queue=[],raf=null,rainLines=[];
+function sizeCanvas(c){const d=Math.min(window.devicePixelRatio||1,2);const w=c.clientWidth,h=c.clientHeight;c.width=Math.round(w*d);c.height=Math.round(h*d);const ctx=c.getContext('2d');ctx.setTransform(d,0,0,d,0,0);return{w,h}}
+function lotus(ctx,x,y,s,open){
+  const petals=open?7:5;
+  for(let i=0;i<petals;i++){const a=-Math.PI/2+(i-(petals-1)/2)*(open?0.42:0.28);
+    ctx.save();ctx.translate(x,y);ctx.rotate(a+Math.PI/2);
+    const g=ctx.createLinearGradient(0,0,0,-s);g.addColorStop(0,'#FBEFF3');g.addColorStop(1,'#E98DAA');
+    ctx.fillStyle=g;ctx.beginPath();ctx.moveTo(0,0);ctx.quadraticCurveTo(s*.42,-s*.55,0,-s);ctx.quadraticCurveTo(-s*.42,-s*.55,0,0);ctx.fill();ctx.restore();}
+}
+function drawPond(t){
+  const W=pond.clientWidth,H=pond.clientHeight;
+  const g=pctx.createLinearGradient(0,0,0,H);g.addColorStop(0,'#2b3a32');g.addColorStop(1,'#1c2621');
+  pctx.fillStyle=g;pctx.fillRect(0,0,W,H);
+  // soft reflections
+  pctx.globalAlpha=.06;pctx.fillStyle='#cfe0d6';for(let i=0;i<6;i++){pctx.beginPath();pctx.ellipse((i*173)%W,(i*97)%H,120,18,0,0,7);pctx.fill()}pctx.globalAlpha=1;
+  // rain streaks
+  if(!reduce){pctx.strokeStyle='rgba(159,179,166,.25)';pctx.lineWidth=1;for(const r of rainLines){r.y+=r.v;if(r.y>H){r.y=-20;r.x=Math.random()*W}pctx.beginPath();pctx.moveTo(r.x,r.y);pctx.lineTo(r.x-2,r.y+12);pctx.stroke()}}
+  for(const d of drops){
+    const age=Math.min(1,(t-d.t0)/1600);
+    if(d.kind==='caught'){ lotus(pctx,d.x,d.y,10+8*Math.min(1,age*1.4),false); continue; }
+    const col=d.kind==='bad'?'255,111,111':d.kind==='sec'?'255,211,77':'207,224,214';
+    const maxR=d.kind==='bad'?14+Math.min(26,d.x2*1.2):18;
+    const rr=3+maxR*(reduce?1:age);
+    pctx.strokeStyle=`rgba(${col},${d.kind==='good'?(reduce?.4:.5*(1-age)+.32):.95})`;pctx.lineWidth=d.kind==='bad'?2.2:1.2;
+    pctx.beginPath();pctx.ellipse(d.x,d.y,rr,rr*.42,0,0,7);pctx.stroke();
+    if(d.kind!=='good'){pctx.beginPath();pctx.ellipse(d.x,d.y,rr*.55,rr*.23,0,0,7);pctx.stroke()}
+  }
+  // big decorative lotus
+  lotus(pctx,W-46,H-36,26,true);
+}
+function loop(t){
+  const now=t||performance.now();
+  for(let k=0;k<4&&queue.length;k++){const s=queue.shift();drops.push(mk(s,now))}
+  if(drops.length>420) drops.splice(0,drops.length-420);
+  drawPond(now);
+  if(queue.length||!reduce) raf=requestAnimationFrame(loop);
+}
+function mk(s,t0){const W=pond.clientWidth,H=pond.clientHeight;return{x:20+Math.random()*(W-40),y:20+Math.random()*(H-40),t0,x2:s.x,kind:s.b?(s.c?'caught':'bad'):(s.s?'sec':'good')}}
+function startPond(samples){
+  sizeCanvas(pond); drops=[];
+  const W=pond.clientWidth,H=pond.clientHeight; rainLines=Array.from({length:40},()=>({x:Math.random()*W,y:Math.random()*H,v:3+Math.random()*3}));
+  if(reduce){const t=performance.now();drops=samples.slice(0,420).map(s=>mk(s,t-5000));drawPond(t);return}
+  queue=samples.slice(0,420); if(!raf) raf=requestAnimationFrame(loop);
+}
+
+/* ---------- sweep chart ---------- */
+function drawSweep(rows,rec,S){
+  const c=$('sweep'),{w:W,h:H}=sizeCanvas(c),ctx=c.getContext('2d');
+  ctx.fillStyle='#1b2520';ctx.fillRect(0,0,W,H);
+  const L=46,Rm=46,T=24,B=34, pw=W-L-Rm, ph=H-T-B;
+  const maxS=168, maxH=Math.max(2.2,...rows.map(r=>r.hours))*1.1, maxP=Math.max(0.2,...rows.map(r=>r.hit))*1.1;
+  const X=s=>L+pw*s/maxS, Y1=v=>T+ph*(1-v/maxH), Y2=v=>T+ph*(1-v/maxP);
+  ctx.fillStyle='rgba(255,111,111,.08)';ctx.fillRect(X(72),T,X(168)-X(72),ph);
+  ctx.font='12px Inter, sans-serif';ctx.fillStyle='#cfdad3';ctx.textAlign='center';
+  for(const s of [0,24,48,72,96,120,168]){ctx.fillText(s+'h',X(s),H-12);ctx.strokeStyle='rgba(207,218,211,.12)';ctx.beginPath();ctx.moveTo(X(s),T);ctx.lineTo(X(s),T+ph);ctx.stroke()}
+  ctx.textAlign='right';for(let v=0;v<=maxH;v+=0.5){ctx.fillStyle='#F3B5C7';ctx.fillText(v.toFixed(1),L-6,Y1(v)+4)}
+  ctx.textAlign='left';for(let v=0;v<=maxP;v+=0.05){ctx.fillStyle='#cfe0d6';ctx.fillText(Math.round(v*100)+'%',W-Rm+6,Y2(v)+4)}
+  ctx.setLineDash([6,5]);ctx.lineWidth=1.4;
+  ctx.strokeStyle='#F3B5C7';ctx.beginPath();ctx.moveTo(L,Y1(G.hours));ctx.lineTo(L+pw,Y1(G.hours));ctx.stroke();
+  ctx.strokeStyle='#cfe0d6';ctx.beginPath();ctx.moveTo(L,Y2(G.hit));ctx.lineTo(L+pw,Y2(G.hit));ctx.stroke();ctx.setLineDash([]);
+  const line=(f,col)=>{ctx.strokeStyle=col;ctx.lineWidth=2.6;ctx.beginPath();rows.forEach((r,i)=>{const x=X(r.S),y=f(r);i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.stroke();rows.forEach(r=>{ctx.fillStyle=col;ctx.beginPath();ctx.arc(X(r.S),f(r),3.2,0,7);ctx.fill()})};
+  line(r=>Y1(r.hours),'#F3B5C7'); line(r=>Y2(r.hit),'#cfe0d6');
+  ctx.strokeStyle='#ffd34d';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(X(S),T);ctx.lineTo(X(S),T+ph);ctx.stroke();
+  if(rec){ctx.fillStyle='#ffd34d';ctx.beginPath();ctx.arc(X(rec.S),Y1(rec.hours),7,0,7);ctx.fill();ctx.fillStyle='#1b2520';ctx.font='700 10px Inter';ctx.textAlign='center';ctx.fillText('★',X(rec.S),Y1(rec.hours)+3.5)}
+  ctx.font='600 12px Inter, sans-serif';ctx.textAlign='left';ctx.fillStyle='#F3B5C7';ctx.fillText('broken agent-hours (left)',L+4,T+12);ctx.fillStyle='#cfe0d6';if(W<560)ctx.fillText('recipients hit (right)',L+4,T+28);else ctx.fillText('recipients hit (right)',L+190,T+12);
+  ctx.fillStyle='#ffb3b3';ctx.textAlign='right';ctx.fillText('beyond 72 h delay guardrail',L+pw-4,T+ph-6);
+}
+
+/* ---------- memo ---------- */
+function memo(r,base,rec,p){
+  const cut=base.hours>0?1-r.hours/base.hours:0, ok=passes(r);
+  const recTxt=rec?`${rec.S} h`:'no window up to 72 h';
+  const catchRate=r.breaks?r.caught/r.breaks:0;
+  const decision = rec
+    ? (r.S===rec.S? `Ship a <b>${rec.S}-hour soak</b> as the default for shared skills, with a ${Math.round(p.ring*100)}% opt-in canary ring${p.expedite?' and a security fast lane':''}.`
+      : `Set the default soak to <b>${rec.S} hours</b>, not the ${r.S} h on the dial. It's the shortest window that clears every guardrail, with a ${Math.round(p.ring*100)}% canary ring${p.expedite?' and a security fast lane':''}.`)
+    : `<b>Don't ship a global soak default yet.</b> No window of 72 h or less clears every guardrail with these inputs. The fix is upstream: better provider evals, or a stricter lane for move-fast providers.`;
+  const risks=[];
+  if(r.hit>G.hit) risks.push(`${(100*r.hit).toFixed(1)}% of recipients still see a bad version each quarter, above the 8% guardrail. Most of that lands on the canary ring.`);
+  if(p.ring>=0.2) risks.push(`A ${Math.round(p.ring*100)}% canary ring catches breaks faster, but it concentrates the pain on those recipients. They need credits or an easy opt-out.`);
+  if(r.sec90>G.sec) risks.push(`Security fixes take ${r.sec90.toFixed(0)} h at P90, above 24 h. Turn on the fast lane.`);
+  if(p.expedite) risks.push(`The security fast lane skips the soak, so a broken security patch reaches everyone at once. Those versions need the provider's eval gate to be mandatory.`);
+  if(p.fast>=0.4) risks.push(`At ${Math.round(p.fast*100)}% move-fast providers, the mixture's tail dominates. A per-provider soak (longer for frequent breakers) would beat one global number.`);
+  if(r.S>48) risks.push(`A ${r.S} h soak holds back about ${r.lost.toFixed(1)} lift-point-days of improvements per recipient per quarter. Providers will feel slower.`);
+  if(!risks.length) risks.push(`The model assumes breaks are independent across versions. A provider having a bad week would fatten the tail, so I'd watch P90 (${r.p90h.toFixed(1)} h), not just the mean.`);
+  const vp = rec
+    ? `A ${rec.S}-hour soak with a small canary ring cuts broken agent-hours by about ${Math.round(100*(1-rec.hours/base.hours))}% versus live sync, and good updates still land within three days.`
+    : `Soaking alone can't make shared skills safe enough here; we need providers to test before they publish, and I'd fund that first.`;
+  $('memo').innerHTML=`
+  <span class="stamp">${ok?'clears guardrails':'misses a guardrail'} · seed ${p.seed}</span>
+  <h3>decision</h3><p>${decision}</p>
+  <h3>evidence</h3><p>Across ${p.n.toLocaleString()} simulated provider-quarters (${r.updates.toLocaleString()} versions, ${r.breaks.toLocaleString()} bad ones), a ${r.S} h soak catches <b>${Math.round(100*catchRate)}%</b> of bad versions before general rollout. Broken agent-hours fall from <b>${base.hours.toFixed(2)} h</b> (live sync) to <b>${r.hours.toFixed(2)} h</b> per recipient per quarter, a <b>${Math.round(100*cut)}%</b> cut. The share of recipients hit falls from ${(100*base.hit).toFixed(1)}% to ${(100*r.hit).toFixed(1)}%. The sweep says the shortest window that clears every guardrail is <b>${recTxt}</b>.</p>
+  <h3>risks</h3><ul>${risks.map(x=>`<li>${x}</li>`).join('')}</ul>
+  <h3>rollout plan</h3><ol>
+    <li>Beta: soak on for new Marketplace listings only; providers can see the soak timer and press "promote now" with a reason.</li>
+    <li>Run a 6-week holdout: half of the eligible skills on live sync, half on the soak. Compare rollback-hours per recipient and provider publish frequency.</li>
+    <li>Graduate if exposure is down ≥ 50% and provider publishing hasn't fallen more than 10%.</li>
+  </ol>
+  <h3>next step</h3><p>Pull 180 days of version and rollback events to replace my priors (break rates by cohort, report rate, time to fix), then re-run this sweep before the beta review.</p>
+  <div class="vp">What I'd tell the VP: ${vp}</div>`;
+}
+
+/* ---------- run ---------- */
+function run(){
+  const p=params(); syncOut();
+  const r=simulate(p,p.S,p.n,p.seed,420);
+  const base=simulate(p,0,p.n,p.seed);
+  const rows=GRID.map(S=>simulate(p,S,Math.min(p.n,2500),p.seed));
+  const rec=rows.find(passes)||null;
+  renderBadges(r,base); drawSweep(rows,rec,p.S); memo(r,base,rec,p); startPond(r.samples);
+  $('sweepcap').textContent=`Sweep across soak windows, same seed for each, so the comparison is fair. ★ marks the shortest window that clears all four guardrails${rec?` (${rec.S} h)`:' (none at 72 h or less)'}; the yellow line is your dial.`;
+}
+let tmr=null; const debounced=()=>{syncOut();clearTimeout(tmr);tmr=setTimeout(run,180)};
+['S','ring','fast','q','m','n','seed','exp'].forEach(id=>$(id).addEventListener('input',debounced));
+$('run').addEventListener('click',run);
+$('reseed').addEventListener('click',()=>{$('seed').value=1+Math.floor(Math.random()*9999);run()});
+let rz=null; window.addEventListener('resize',()=>{clearTimeout(rz);rz=setTimeout(run,250)});
+if(document.fonts&&document.fonts.ready) document.fonts.ready.then(run); else run();
+})();
+</script>
+</body>
+</html>
